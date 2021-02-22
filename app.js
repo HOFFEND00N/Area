@@ -2,11 +2,19 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const urlencodedParser = bodyParser.urlencoded({ extended: false });
 const MongoClient = require("mongodb").MongoClient;
-
+const webSiteUrl = 'http://localhost:3000';
 const mongoClient = new MongoClient("mongodb://localhost:27017/", { useUnifiedTopology: true });
-
 const app = express();
 app.use(express.static("public"));
+
+mongoClient.connect(function (err, client) {
+    if (err)
+        console.log(err);
+    dbClient = client;
+    app.locals.collection = client.db("SecretDB").collection("TextSecrets");
+    app.listen(3000);
+});
+
 
 app.get("/", function (req, res) {
     res.render("post.hbs");
@@ -18,79 +26,53 @@ app.get("/post", function (req, res) {
     res.render("post.hbs");
 });
 app.get("/[a-zA-Z]{6}$", function (req, res) {
-    mongoClient.connect(function (err, client) {
+    let url = webSiteUrl + req.url;
+    let collection = req.app.locals.collection;
 
-        const db = client.db("SecretDB");
-        const collection = db.collection("TextSecrets");
-
-        if (err) {
+    collection.find({ Url: url }).toArray(function (err, result) {
+        if (err)
             console.log(err);
-        }
 
-        collection.find({ url: req.url }).toArray(function (err, result) {
-            if (err)
-                console.log(err);
-
-            if (result.length == 0)
-                console.log("there is no such link");
-            console.log(result);
-            client.close();
-        });
+        if (result.length == 0)
+            console.log("there is no such link");
     });
 
-    res.render("passwordReq.hbs", { url: req.originalUrl });
-    console.log(req.originalUrl);
+    res.render("passwordReq.hbs", { Url: url, Message: "" });
 })
 
 app.post("/post", urlencodedParser, function (req, res) {
     if (!req.body)
         return res.sendStatus(400);
-    mongoClient.connect(function (err, client) {
+    let url = GenerateKey(6);
+    let secret = { SecretText: req.body.SecretText, Password: req.body.Password, Url: url };
+    let collection = req.app.locals.collection;
 
-        const db = client.db("SecretDB");
-        const collection = db.collection("TextSecrets");
-        let url = GenerateKey(6);
+    collection.insertOne(secret, function (err, result) {
 
-        let secret = { secretText: req.body.SecretText, password: req.body.Password, url: url };
+        if (err) {
+            console.log(err);
+        }
 
-        collection.insertOne(secret, function (err, result) {
-
-            if (err) {
-                console.log(err);
-            }
-            console.log(result.ops);
-
-            res.render("link.hbs", { url: url });
-            client.close();
-        });
+        res.render("link.hbs", { Url: url });
     });
 })
 
 app.post("/get", urlencodedParser, function (req, res) {
     if (!req.body)
         return res.sendStatus(400);
-    mongoClient.connect(function (err, client) {
 
-        const db = client.db("SecretDB");
-        const collection = db.collection("TextSecrets");
+    let collection = req.app.locals.collection;
 
+    collection.findOne({ Url: req.body.Url, Password: req.body.Password }, function (err, result) {
         if (err)
             console.log(err);
 
-        console.log(`req.password = ${req.Passwrod}`);
-        collection.find({ url: req.url, Password: req.Password }).toArray(function (err, result) {
-            if (err)
-                console.log(err);
-
-            console.log(result.SecretText);
-
+        if (result === null)
+            res.render("passwordReq.hbs", { Url: req.body.Url, Message: "Wrong Password" });
+        else
             res.render("get.hbs", { SecretText: result.SecretText });
-            client.close();
-        });
     });
 })
-
-app.listen(3000);
 
 function GenerateKey(length) {
     var result = '';
@@ -98,5 +80,10 @@ function GenerateKey(length) {
     for (var i = 0; i < length; i++) {
         result += characters.charAt(Math.floor(Math.random() * characters.length));
     }
-    return 'http://localhost:3000/' + result;
+    return webSiteUrl + '/' + result;
 }
+
+process.on("SIGINT", () => {
+    dbClient.close();
+    process.exit();
+});
