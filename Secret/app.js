@@ -5,7 +5,10 @@ const MongoClient = require("mongodb").MongoClient;
 const webSiteUrl = 'http://localhost:3000';
 const mongoClient = new MongoClient("mongodb://localhost:27017/", { useUnifiedTopology: true });
 const app = express();
+
 app.use(express.static("public"));
+
+let dbClient;
 
 mongoClient.connect(function (err, client) {
     if (err)
@@ -19,41 +22,56 @@ mongoClient.connect(function (err, client) {
 app.get("/", function (req, res) {
     res.render("post.hbs");
 });
+
 app.get("/get", function (req, res) {
     res.render("get.hbs");
 });
+
 app.get("/post", function (req, res) {
     res.render("post.hbs");
 });
+
 app.get("/[a-zA-Z]{6}$", function (req, res) {
     let url = webSiteUrl + req.url;
     let collection = req.app.locals.collection;
-
-    collection.find({ Url: url }).toArray(function (err, result) {
-        if (err)
+    collection.find({ Url: url }, function (err, result) {
+        if (err) {
             console.log(err);
-
-        if (result.length == 0)
-            console.log("there is no such link");
+            res.render("Error.hbs", { Error: "Something went wrong!" });
+        }
+        else if (result == null)
+            res.render("Error.hbs", { Error: "Wrong Link" });
+        else
+            res.render("passwordReq.hbs", { Url: url, Message: "" });
     });
-
-    res.render("passwordReq.hbs", { Url: url, Message: "" });
 })
 
 app.post("/post", urlencodedParser, function (req, res) {
     if (!req.body)
         return res.sendStatus(400);
-    let url = GenerateKey(6);
-    let secret = { SecretText: req.body.SecretText, Password: req.body.Password, Url: url };
     let collection = req.app.locals.collection;
+    let url = GenerateUrl(6);
+
+    let IsUnique = false;
+    while (!IsUnique) {
+        collection.find({ Url: url }, function (err, result) {
+            if (result.Url == null)
+                IsUnique = true;
+            else
+                url = GenerateUrl(6);
+        });
+    }
+
+    let secret = { SecretText: req.body.SecretText, Password: req.body.Password, Url: url };
 
     collection.insertOne(secret, function (err, result) {
 
         if (err) {
             console.log(err);
+            res.render("Error.hbs", { Error: "Something went wrong!" });
         }
-
-        res.render("link.hbs", { Url: url });
+        else
+            res.render("link.hbs", { Url: url });
     });
 })
 
@@ -64,17 +82,18 @@ app.post("/get", urlencodedParser, function (req, res) {
     let collection = req.app.locals.collection;
 
     collection.findOne({ Url: req.body.Url, Password: req.body.Password }, function (err, result) {
-        if (err)
+        if (err) {
             console.log(err);
-
-        if (result === null)
+            res.render("Error.hbs", { Error: "Something went wrong!" });
+        }
+        else if (result == null)
             res.render("passwordReq.hbs", { Url: req.body.Url, Message: "Wrong Password" });
         else
             res.render("get.hbs", { SecretText: result.SecretText });
     });
 })
 
-function GenerateKey(length) {
+function GenerateUrl(length) {
     var result = '';
     var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     for (var i = 0; i < length; i++) {
