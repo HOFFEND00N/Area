@@ -2,7 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const urlencodedParser = bodyParser.urlencoded({ extended: false });
 const MongoClient = require("mongodb").MongoClient;
-const webSiteUrl = 'http://localhost:3000';
+const webSiteUrl = 'localhost:3000';
 const mongoClient = new MongoClient("mongodb://localhost:27017/", { useUnifiedTopology: true });
 const app = express();
 
@@ -37,10 +37,10 @@ app.get("/[a-zA-Z]{6}$", function (req, res) {
     collection.find({ Url: url }, function (err, result) {
         if (err) {
             console.log(err);
-            res.render("Error.hbs", { Error: "Something went wrong!" });
+            res.render("message.hbs", { Message: "Something went wrong!" });
         }
         else if (result == null)
-            res.render("Error.hbs", { Error: "Wrong Link" });
+            res.render("message.hbs", { Message: "Wrong Link" });
         else
             res.render("passwordReq.hbs", { Url: url, Message: "" });
     });
@@ -68,7 +68,7 @@ app.post("/post", urlencodedParser, function (req, res) {
 
         if (err) {
             console.log(err);
-            res.render("Error.hbs", { Error: "Something went wrong!" });
+            res.render("message.hbs", { Message: "Something went wrong!" });
         }
         else
             res.render("link.hbs", { Url: url });
@@ -84,12 +84,33 @@ app.post("/get", urlencodedParser, function (req, res) {
     collection.findOne({ Url: req.body.Url, Password: req.body.Password }, function (err, result) {
         if (err) {
             console.log(err);
-            res.render("Error.hbs", { Error: "Something went wrong!" });
+            res.render("message.hbs", { Message: "Something went wrong!" });
         }
         else if (result == null)
             res.render("passwordReq.hbs", { Url: req.body.Url, Message: "Wrong Password" });
         else
-            res.render("get.hbs", { SecretText: result.SecretText });
+            res.render("get.hbs", { SecretText: result.SecretText, Url: req.body.Url });
+    });
+})
+
+app.post("/delete", urlencodedParser, function (req, res) {
+    if (!req.body)
+        return res.sendStatus(400);
+
+    let collection = req.app.locals.collection;
+
+    console.log(req.body.Url);
+
+    // console.log(`req.body.Url = ${req.body.Url}, req.url = ${req.Url}`);
+
+    collection.remove({ Url: req.body.Url }, function(err, result){
+        
+        if (err) {
+            console.log(err);
+            res.render("message.hbs", { Message: "Something went wrong!" });
+        }
+        else
+            res.render("Message.hbs", { Message: "Your Secret have been deleted!"});
     });
 })
 
