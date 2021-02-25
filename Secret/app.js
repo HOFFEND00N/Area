@@ -101,8 +101,6 @@ app.post("/delete", urlencodedParser, function (req, res) {
 
     console.log(req.body.Url);
 
-    // console.log(`req.body.Url = ${req.body.Url}, req.url = ${req.Url}`);
-
     collection.remove({ Url: req.body.Url }, function(err, result){
         
         if (err) {
