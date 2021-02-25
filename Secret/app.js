@@ -1,5 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const bcrypt = require('bcrypt');
+const { encrypt, decrypt } = require('./crypto');
 const urlencodedParser = bodyParser.urlencoded({ extended: false });
 const MongoClient = require("mongodb").MongoClient;
 const webSiteUrl = 'localhost:3000';
@@ -31,85 +33,84 @@ app.get("/post", function (req, res) {
     res.render("post.hbs");
 });
 
-app.get("/[a-zA-Z]{6}$", function (req, res) {
-    let url = webSiteUrl + req.url;
-    let collection = req.app.locals.collection;
-    collection.find({ Url: url }, function (err, result) {
-        if (err) {
-            console.log(err);
-            res.render("message.hbs", { Message: "Something went wrong!" });
-        }
-        else if (result == null)
-            res.render("message.hbs", { Message: "Wrong Link" });
-        else
+app.get("/[a-zA-Z]{6}$", async function (req, res) {
+    try {
+        let url = webSiteUrl + req.url;
+        let collection = req.app.locals.collection;
+        let result = await collection.find({ Url: url });
+        if (result !== null)
             res.render("passwordReq.hbs", { Url: url, Message: "" });
-    });
-})
-
-app.post("/post", urlencodedParser, function (req, res) {
-    if (!req.body)
-        return res.sendStatus(400);
-    let collection = req.app.locals.collection;
-    let url = GenerateUrl(6);
-
-    let IsUnique = false;
-    while (!IsUnique) {
-        collection.find({ Url: url }, function (err, result) {
-            if (result.Url == null)
-                IsUnique = true;
-            else
-                url = GenerateUrl(6);
-        });
+        else
+            return res.status(500).json('Something went wrong!');
+    } catch (error) {
+        res.status(500).json('Something went wrong!');
     }
-
-    let secret = { SecretText: req.body.SecretText, Password: req.body.Password, Url: url };
-
-    collection.insertOne(secret, function (err, result) {
-
-        if (err) {
-            console.log(err);
-            res.render("message.hbs", { Message: "Something went wrong!" });
-        }
-        else
-            res.render("link.hbs", { Url: url });
-    });
 })
 
-app.post("/get", urlencodedParser, function (req, res) {
-    if (!req.body)
-        return res.sendStatus(400);
+app.post("/post", urlencodedParser, async function (req, res) {
+    try {
+        let collection = req.app.locals.collection;
+        let url = GenerateUrl(6);
 
-    let collection = req.app.locals.collection;
-
-    collection.findOne({ Url: req.body.Url, Password: req.body.Password }, function (err, result) {
-        if (err) {
-            console.log(err);
-            res.render("message.hbs", { Message: "Something went wrong!" });
+        let IsUnique = false;
+        while (!IsUnique) {
+            collection.find({ Url: url }, function (err, result) {
+                if (result.Url == null)
+                    IsUnique = true;
+                else
+                    url = GenerateUrl(6);
+            });
         }
-        else if (result == null)
-            res.render("passwordReq.hbs", { Url: req.body.Url, Message: "Wrong Password" });
-        else
-            res.render("get.hbs", { SecretText: result.SecretText, Url: req.body.Url });
-    });
+
+        let hashedPassword = await bcrypt.hash(req.body.Password, 12);
+        let secret = { SecretText: encrypt(req.body.SecretText), Password: hashedPassword, Url: url };
+
+        await collection.insertOne(secret);
+
+        res.render("link.hbs", { Url: url });
+    } catch (error) {
+        res.status(500).json('Something went wrong!');
+    }
 })
 
-app.post("/delete", urlencodedParser, function (req, res) {
-    if (!req.body)
-        return res.sendStatus(400);
+app.post("/get", urlencodedParser, async function (req, res) {
+    try {
+        let collection = req.app.locals.collection;
+        let { Url, Password } = req.body;
 
-    let collection = req.app.locals.collection;
+        let result = await collection.findOne({ Url: Url });
+        await bcrypt.compare(Password, result.Password, function (err, compareResult) {
+            console.log(compareResult);
+            if (compareResult == false)
+                return res.status(500).json('Something went wrong!');
+            else
+                res.render("get.hbs", { SecretText: decrypt(result.SecretText), Url: Url });
+        })
 
-    console.log(req.body.Url);
+        if (result == null)
+            return res.status(500).json('Something went wrong!');
 
-    collection.remove({ Url: req.body.Url }, function(err, result){
-        
-        if (err) {
-            console.log(err);
-            res.render("message.hbs", { Message: "Something went wrong!" });
-        }
-        else
-            res.render("Message.hbs", { Message: "Your Secret have been deleted!"});
-    });
+    } catch (error) {
+        res.status(500).json('Something went wrong!');
+    }
+})
+
+app.post("/delete", urlencodedParser, async function (req, res) {
+    try {
+        let collection = req.app.locals.collection;
+
+        console.log(req.body.Url);
+
+        await collection.remove({ Url: req.body.Url }, function (err, result) {
+            if (err) {
+                return res.status(500).json('Something went wrong!');
+            }
+            else
+                res.render("Message.hbs", { Message: "Your Secret have been deleted!" });
+        });
+    } catch (error) {
+        res.status(500).json('Something went wrong!');
+    }
 })
 
 function GenerateUrl(length) {
