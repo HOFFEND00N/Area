@@ -1,3 +1,10 @@
+//TODO: app.js do all the job / not SRP
+//TODO: dbClient varaible, mb hide, mb move to another layer of abstraction
+//TODO: url naming is not clear
+//TODO: websiteUrl have problems with future changes, may be store just secret 6 symbols generated key
+//TODO: Error handling is weird, need middleware
+//TODO: bcrypt usage is async, dont use callback
+//TODO: result check==null is useless
 const express = require("express");
 const bodyParser = require("body-parser");
 const bcrypt = require('bcrypt');
@@ -45,7 +52,7 @@ app.get("/[a-zA-Z]{6}$", async function (req, res) {
     } catch (error) {
         res.status(500).json('Something went wrong!');
     }
-})
+});
 
 app.post("/post", urlencodedParser, async function (req, res) {
     try {
@@ -71,7 +78,7 @@ app.post("/post", urlencodedParser, async function (req, res) {
     } catch (error) {
         res.status(500).json('Something went wrong!');
     }
-})
+});
 
 app.post("/get", urlencodedParser, async function (req, res) {
     try {
@@ -79,21 +86,21 @@ app.post("/get", urlencodedParser, async function (req, res) {
         let { Url, Password } = req.body;
 
         let result = await collection.findOne({ Url: Url });
-        await bcrypt.compare(Password, result.Password, function (err, compareResult) {
-            console.log(compareResult);
-            if (compareResult == false)
-                return res.status(500).json('Something went wrong!');
-            else
-                res.render("get.hbs", { SecretText: decrypt(result.SecretText), Url: Url });
-        })
+        let match = await bcrypt.compare(Password, result.Password);
 
+        if(match)
+            res.render("get.hbs", { SecretText: decrypt(result.SecretText), Url: Url });
+        else
+            return res.status(500).json('Something went wrong!');
+
+        //it is late to check
         if (result == null)
             return res.status(500).json('Something went wrong!');
 
     } catch (error) {
         res.status(500).json('Something went wrong!');
     }
-})
+});
 
 app.post("/delete", urlencodedParser, async function (req, res) {
     try {
@@ -111,7 +118,7 @@ app.post("/delete", urlencodedParser, async function (req, res) {
     } catch (error) {
         res.status(500).json('Something went wrong!');
     }
-})
+});
 
 function GenerateUrl(length) {
     var result = '';
